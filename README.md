@@ -64,7 +64,7 @@ Published release images are expected at `ghcr.io/containeroo/filesystem-exporte
 
 ## Kubernetes
 
-Example manifests are available in [deploy/kubernetes/deployment.yaml](deploy/kubernetes/deployment.yaml) and [deploy/kubernetes/servicemonitor.yaml](deploy/kubernetes/servicemonitor.yaml).
+Example manifests are available in [deploy/kubernetes/deployment.yaml](deploy/kubernetes/deployment.yaml), [deploy/kubernetes/servicemonitor.yaml](deploy/kubernetes/servicemonitor.yaml), and [deploy/kubernetes/prometheusrule.yaml](deploy/kubernetes/prometheusrule.yaml).
 
 The deployment example mounts an NFS export directly into `/data`:
 
@@ -75,6 +75,8 @@ The deployment example mounts an NFS export directly into `/data`:
 - a Service exposing the metrics port
 
 Update the image reference, namespace, and the example `nfs.server` and `nfs.path` values before applying it.
+
+The PrometheusRule example includes alerts for repeated collection failures, stale collection timestamps, and low free space on the root filesystem path. Adjust the hard-coded `/data` label matchers if you deploy the exporter with a different `-filesystem.path`.
 
 ## Flags
 

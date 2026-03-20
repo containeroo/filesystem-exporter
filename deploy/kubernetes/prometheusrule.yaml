@@ -1,0 +1,43 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: filesystem-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: filesystem-exporter
+spec:
+  groups:
+    - name: filesystem-exporter.rules
+      rules:
+        - alert: FilesystemExporterCollectionFailing
+          expr: max_over_time(filesystem_exporter_collect_success{root_path="/data"}[10m]) < 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: filesystem-exporter has not completed a successful collection
+            description: filesystem-exporter for {{ $labels.root_path }} has failed every collection for the last 10 minutes.
+        - alert: FilesystemExporterCollectionStale
+          expr: time() - filesystem_exporter_collect_timestamp_seconds{root_path="/data"} > 900
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: filesystem-exporter metrics are stale
+            description: filesystem-exporter for {{ $labels.root_path }} has not produced a fresh collection timestamp for more than 15 minutes.
+        - alert: FilesystemUsageHigh
+          expr: filesystem_path_available_bytes{root_path="/data",path="/data"} / filesystem_path_capacity_bytes{root_path="/data",path="/data"} < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: filesystem free space is low
+            description: Less than 10% free space remains on {{ $labels.path }}.
+        - alert: FilesystemUsageCritical
+          expr: filesystem_path_available_bytes{root_path="/data",path="/data"} / filesystem_path_capacity_bytes{root_path="/data",path="/data"} < 0.05
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: filesystem free space is critically low
+            description: Less than 5% free space remains on {{ $labels.path }}.
