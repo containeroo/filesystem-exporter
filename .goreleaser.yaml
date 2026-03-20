@@ -27,7 +27,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README*
-      - examples/kubernetes/*
+      - deploy/kubernetes/*
       - Dockerfile
 
 checksum:

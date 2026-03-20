@@ -64,17 +64,17 @@ Published release images are expected at `ghcr.io/containeroo/filesystem-exporte
 
 ## Kubernetes
 
-Example manifests are available in [examples/kubernetes/deployment.yaml](examples/kubernetes/deployment.yaml) and [examples/kubernetes/servicemonitor.yaml](examples/kubernetes/servicemonitor.yaml).
+Example manifests are available in [deploy/kubernetes/deployment.yaml](deploy/kubernetes/deployment.yaml) and [deploy/kubernetes/servicemonitor.yaml](deploy/kubernetes/servicemonitor.yaml).
 
-The deployment example assumes Kubernetes mounts the target storage into `/data` through a PVC:
+The deployment example mounts an NFS export directly into `/data`:
 
 - a standard, non-privileged container
-- a PVC mounted at `/data`
+- an NFS export mounted at `/data`
 - a startup probe so initial scans can finish before liveness enforcement starts
 - HTTP readiness and liveness probes
 - a Service exposing the metrics port
 
-Update the image reference, namespace, and PVC name before applying it.
+Update the image reference, namespace, and the example `nfs.server` and `nfs.path` values before applying it.
 
 ## Flags
 

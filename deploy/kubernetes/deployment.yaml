@@ -53,8 +53,10 @@ spec:
               mountPath: /data
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: storage-claim
+          nfs:
+            server: nfs.example.internal
+            path: /exports/data
+            readOnly: true
 ---
 apiVersion: v1
 kind: Service
