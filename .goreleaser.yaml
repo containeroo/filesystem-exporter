@@ -1,0 +1,99 @@
+---
+version: 2
+project_name: nfs-exporter
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: nfs-exporter
+    main: ./cmd/nfs-exporter
+    binary: nfs-exporter
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README*
+      - examples/kubernetes/*
+      - Dockerfile
+
+checksum:
+  name_template: checksums.txt
+
+dockers:
+  - id: ghcr-amd64
+    use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    image_templates:
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-amd64
+    extra_files:
+      - go.mod
+      - go.sum
+      - cmd
+      - internal
+      - README.md
+    build_flag_templates:
+      - --pull
+      - --platform=linux/amd64
+      - --build-arg=TARGETOS=linux
+      - --build-arg=TARGETARCH=amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description=Prometheus exporter for NFS filesystem usage
+      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
+      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - id: ghcr-arm64
+    use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    image_templates:
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-arm64
+    extra_files:
+      - go.mod
+      - go.sum
+      - cmd
+      - internal
+      - README.md
+    build_flag_templates:
+      - --pull
+      - --platform=linux/arm64
+      - --build-arg=TARGETOS=linux
+      - --build-arg=TARGETARCH=arm64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description=Prometheus exporter for NFS filesystem usage
+      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
+      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+
+docker_manifests:
+  - name_template: ghcr.io/containeroo/nfs-exporter:{{ .Tag }}
+    image_templates:
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-amd64
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-arm64
+  - name_template: ghcr.io/containeroo/nfs-exporter:latest
+    image_templates:
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-amd64
+      - ghcr.io/containeroo/nfs-exporter:{{ .Tag }}-arm64
+
+release:
+  prerelease: auto
