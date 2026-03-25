@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -16,15 +17,19 @@ import (
 	"github.com/containeroo/filesystem-exporter/internal/scanner"
 )
 
-func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
-	scan := scanner.NewPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs)
-	monitor := exporter.NewMonitor(scan, cfg.Collector.Interval, cfg.Collector.Timeout, logger)
+var newPathScanner = func(rootPath string, reportChildDirs bool) exporter.Scanner {
+	return scanner.NewPathScanner(rootPath, reportChildDirs)
+}
 
-	if err := monitor.Refresh(ctx); err != nil {
-		return fmt.Errorf("initial collection failed for %s: %w", cfg.Filesystem.Path, err)
+var listen = net.Listen
+
+func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
+	if err := scanner.ValidatePath(cfg.Filesystem.Path); err != nil {
+		return fmt.Errorf("validate filesystem path %s: %w", cfg.Filesystem.Path, err)
 	}
 
-	go monitor.Run(ctx)
+	scan := newPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs)
+	monitor := exporter.NewMonitor(scan, cfg.Collector.Interval, cfg.Collector.Timeout, logger)
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
@@ -54,6 +59,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	listener, err := listen("tcp", cfg.ListenAddress)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress, err)
+	}
+
 	serverErrCh := make(chan error, 1)
 	go func() {
 		logger.Info(
@@ -63,7 +73,14 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 			"filesystem_path", cfg.Filesystem.Path,
 			"filesystem_report_child_dirs", cfg.Filesystem.ReportChildDirs,
 		)
-		serverErrCh <- server.ListenAndServe()
+		serverErrCh <- server.Serve(listener)
+	}()
+
+	go func() {
+		if err := monitor.Refresh(ctx); err != nil {
+			logger.Error("initial collection failed", "filesystem_path", cfg.Filesystem.Path, "err", err)
+		}
+		monitor.Run(ctx)
 	}()
 
 	select {

@@ -27,6 +27,11 @@ func NewPathScanner(rootPath string, reportChildDirs bool) *PathScanner {
 	}
 }
 
+func ValidatePath(target string) error {
+	_, err := statPath(filepath.Clean(target))
+	return err
+}
+
 func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 	rootStats, err := statPath(s.rootPath)
 	if err != nil {

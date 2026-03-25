@@ -6,6 +6,7 @@ The exporter is designed for Kubernetes and Prometheus-style operation:
 
 - it keeps scrape handlers cheap by refreshing data on a background interval instead of doing a full scan on every scrape
 - it exposes `/metrics`, `/-/healthy`, and `/-/ready`
+- it starts serving HTTP probes immediately and performs the initial filesystem scan in the background
 - it publishes process and Go runtime metrics in addition to exporter-specific metrics
 - it relies on the container runtime or orchestrator to mount storage before the exporter starts
 
@@ -79,8 +80,8 @@ The deployment example mounts an NFS export directly into `/data`:
 
 - a standard, non-privileged container
 - an NFS export mounted at `/data`
-- a startup probe so initial scans can finish before liveness enforcement starts
-- HTTP readiness and liveness probes
+- HTTP readiness and liveness probes that come up before the first full scan completes
+- an optional startup probe
 - a Service exposing the metrics port
 
 Update the image reference, namespace, and the example `nfs.server` and `nfs.path` values before applying it.
