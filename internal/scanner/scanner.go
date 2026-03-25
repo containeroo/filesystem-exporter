@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -112,6 +113,10 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 
 		stats, err := statPath(localPath)
 		if err != nil {
+			if shouldIgnoreMissingPath(err) {
+				continue
+			}
+
 			return nil, err
 		}
 
@@ -132,8 +137,22 @@ func walkRegularFiles(
 	perFile func(filePath string, size float64) error,
 	aggregate func(size float64),
 ) error {
-	return filepath.WalkDir(rootPath, func(filePath string, dirEntry fs.DirEntry, walkErr error) error {
+	return walkRegularFilesWithWalker(ctx, rootPath, perFile, aggregate, filepath.WalkDir)
+}
+
+func walkRegularFilesWithWalker(
+	ctx context.Context,
+	rootPath string,
+	perFile func(filePath string, size float64) error,
+	aggregate func(size float64),
+	walkDir func(root string, fn fs.WalkDirFunc) error,
+) error {
+	return walkDir(rootPath, func(filePath string, dirEntry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if shouldIgnoreMissingPath(walkErr) {
+				return nil
+			}
+
 			return walkErr
 		}
 
@@ -157,6 +176,10 @@ func walkRegularFiles(
 
 		fileInfo, err := dirEntry.Info()
 		if err != nil {
+			if shouldIgnoreMissingPath(err) {
+				return nil
+			}
+
 			return fmt.Errorf("stat file %s: %w", filePath, err)
 		}
 		if !fileInfo.Mode().IsRegular() {
@@ -174,6 +197,10 @@ func walkRegularFiles(
 
 		return nil
 	})
+}
+
+func shouldIgnoreMissingPath(err error) bool {
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 func statPath(target string) (usage.PathUsage, error) {
