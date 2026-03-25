@@ -26,7 +26,7 @@ spec:
             summary: filesystem-exporter metrics are stale
             description: filesystem-exporter for {{ $labels.root_path }} has not produced a fresh collection timestamp for more than 15 minutes.
         - alert: FilesystemUsageHigh
-          expr: filesystem_path_available_bytes{root_path="/data",path="/data"} / filesystem_path_capacity_bytes{root_path="/data",path="/data"} < 0.10
+          expr: filesystem_exporter_path_available_bytes{root_path="/data",path="/data"} / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.10
           for: 15m
           labels:
             severity: warning
@@ -34,7 +34,7 @@ spec:
             summary: filesystem free space is low
             description: Less than 10% free space remains on {{ $labels.path }}.
         - alert: FilesystemUsageCritical
-          expr: filesystem_path_available_bytes{root_path="/data",path="/data"} / filesystem_path_capacity_bytes{root_path="/data",path="/data"} < 0.05
+          expr: filesystem_exporter_path_available_bytes{root_path="/data",path="/data"} / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.05
           for: 15m
           labels:
             severity: critical

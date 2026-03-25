@@ -104,15 +104,15 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 
 These metrics include the constant label `root_path`, plus a `path` label for the root path. If `-filesystem.report-child-dirs=true` is enabled, they also include one series per depth-1 child directory.
 
-- `filesystem_path_capacity_bytes`
-- `filesystem_path_available_bytes`
-- `filesystem_path_used_bytes`
+- `filesystem_exporter_path_capacity_bytes`
+- `filesystem_exporter_path_available_bytes`
+- `filesystem_exporter_path_used_bytes`
 
 Example:
 
 ```text
-filesystem_path_used_bytes{root_path="/data",path="/data"} 1.506738176e+09
-filesystem_path_used_bytes{root_path="/data",path="/data/archive"} 7.86706432e+08
+filesystem_exporter_path_used_bytes{root_path="/data",path="/data"} 1.506738176e+09
+filesystem_exporter_path_used_bytes{root_path="/data",path="/data/archive"} 7.86706432e+08
 ```
 
 ### Exporter health metrics

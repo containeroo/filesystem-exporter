@@ -109,19 +109,19 @@ func NewCollector(monitor *Monitor, constLabels prometheus.Labels) *Collector {
 	return &Collector{
 		monitor: monitor,
 		capacityDesc: prometheus.NewDesc(
-			"filesystem_path_capacity_bytes",
+			"filesystem_exporter_path_capacity_bytes",
 			"Total capacity in bytes for the scanned path or underlying filesystem.",
 			[]string{"path"},
 			constLabels,
 		),
 		availableDesc: prometheus.NewDesc(
-			"filesystem_path_available_bytes",
+			"filesystem_exporter_path_available_bytes",
 			"Available capacity in bytes for the scanned path or underlying filesystem.",
 			[]string{"path"},
 			constLabels,
 		),
 		usedDesc: prometheus.NewDesc(
-			"filesystem_path_used_bytes",
+			"filesystem_exporter_path_used_bytes",
 			"Used bytes contained in the scanned path subtree.",
 			[]string{"path"},
 			constLabels,

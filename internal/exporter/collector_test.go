@@ -49,11 +49,11 @@ func TestCollectorExportsMetricsFromLastSuccessfulSnapshot(t *testing.T) {
 	assertMetricValue(t, registry, "filesystem_exporter_collect_success", map[string]string{
 		"root_path": "/data",
 	}, 1)
-	assertMetricValue(t, registry, "filesystem_path_used_bytes", map[string]string{
+	assertMetricValue(t, registry, "filesystem_exporter_path_used_bytes", map[string]string{
 		"root_path": "/data",
 		"path":      "/data/archive",
 	}, 250)
-	assertMetricValue(t, registry, "filesystem_path_capacity_bytes", map[string]string{
+	assertMetricValue(t, registry, "filesystem_exporter_path_capacity_bytes", map[string]string{
 		"root_path": "/data",
 		"path":      "/data",
 	}, 1000)
@@ -87,7 +87,7 @@ func TestMonitorKeepsLastSuccessfulSnapshotOnFailure(t *testing.T) {
 	assertMetricValue(t, registry, "filesystem_exporter_collect_success", map[string]string{
 		"root_path": "/data",
 	}, 0)
-	assertMetricValue(t, registry, "filesystem_path_used_bytes", map[string]string{
+	assertMetricValue(t, registry, "filesystem_exporter_path_used_bytes", map[string]string{
 		"root_path": "/data",
 		"path":      "/data",
 	}, 500)
