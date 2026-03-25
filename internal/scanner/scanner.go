@@ -16,12 +16,14 @@ import (
 )
 
 type PathScanner struct {
-	rootPath string
+	rootPath        string
+	reportChildDirs bool
 }
 
-func NewPathScanner(rootPath string) *PathScanner {
+func NewPathScanner(rootPath string, reportChildDirs bool) *PathScanner {
 	return &PathScanner{
-		rootPath: filepath.Clean(rootPath),
+		rootPath:        filepath.Clean(rootPath),
+		reportChildDirs: reportChildDirs,
 	}
 }
 
@@ -31,12 +33,26 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		return nil, err
 	}
 
+	rootLabel := filepath.ToSlash(filepath.Clean(s.rootPath))
+	if !s.reportChildDirs {
+		if err := walkRegularFiles(ctx, s.rootPath, nil, func(size float64) {
+			rootStats.UsedBytes += size
+		}); err != nil {
+			return nil, err
+		}
+
+		return []usage.PathUsage{{
+			Path:           rootLabel,
+			CapacityBytes:  rootStats.CapacityBytes,
+			AvailableBytes: rootStats.AvailableBytes,
+			UsedBytes:      rootStats.UsedBytes,
+		}}, nil
+	}
+
 	entries, err := os.ReadDir(s.rootPath)
 	if err != nil {
 		return nil, fmt.Errorf("read root directory %s: %w", s.rootPath, err)
 	}
-
-	rootLabel := filepath.ToSlash(filepath.Clean(s.rootPath))
 
 	childPaths := make(map[string]string)
 	for _, entry := range entries {
@@ -53,40 +69,8 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		usedBytes[label] = 0
 	}
 
-	err = filepath.WalkDir(s.rootPath, func(filePath string, dirEntry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if filePath == s.rootPath {
-			return nil
-		}
-
-		if dirEntry.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-
-		if dirEntry.IsDir() {
-			return nil
-		}
-
-		fileInfo, err := dirEntry.Info()
-		if err != nil {
-			return fmt.Errorf("stat file %s: %w", filePath, err)
-		}
-		if !fileInfo.Mode().IsRegular() {
-			return nil
-		}
-
-		size := float64(fileInfo.Size())
+	err = walkRegularFiles(ctx, s.rootPath, func(filePath string, size float64) error {
 		usedBytes[rootLabel] += size
-
 		relativePath, err := filepath.Rel(s.rootPath, filePath)
 		if err != nil {
 			return fmt.Errorf("make relative path for %s: %w", filePath, err)
@@ -98,7 +82,7 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		}
 
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +119,56 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 	}
 
 	return results, nil
+}
+
+func walkRegularFiles(
+	ctx context.Context,
+	rootPath string,
+	perFile func(filePath string, size float64) error,
+	aggregate func(size float64),
+) error {
+	return filepath.WalkDir(rootPath, func(filePath string, dirEntry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if filePath == rootPath {
+			return nil
+		}
+
+		if dirEntry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		if dirEntry.IsDir() {
+			return nil
+		}
+
+		fileInfo, err := dirEntry.Info()
+		if err != nil {
+			return fmt.Errorf("stat file %s: %w", filePath, err)
+		}
+		if !fileInfo.Mode().IsRegular() {
+			return nil
+		}
+
+		size := float64(fileInfo.Size())
+		if aggregate != nil {
+			aggregate(size)
+		}
+
+		if perFile != nil {
+			return perFile(filePath, size)
+		}
+
+		return nil
+	})
 }
 
 func statPath(target string) (usage.PathUsage, error) {

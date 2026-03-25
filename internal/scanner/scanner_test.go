@@ -9,7 +9,7 @@ import (
 	"github.com/containeroo/filesystem-exporter/internal/usage"
 )
 
-func TestPathScannerReportsRootAndDepthOneDirectories(t *testing.T) {
+func TestPathScannerReportsOnlyRootByDefault(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -26,7 +26,37 @@ func TestPathScannerReportsRootAndDepthOneDirectories(t *testing.T) {
 		t.Fatalf("Symlink() error = %v", err)
 	}
 
-	scanner := NewPathScanner(root)
+	scanner := NewPathScanner(root, false)
+	results, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 usage entry, got %d", len(results))
+	}
+
+	assertUsage(t, results, root, 60)
+}
+
+func TestPathScannerReportsRootAndDepthOneDirectoriesWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	mustMkdirAll(t, filepath.Join(root, "archive", "nested"))
+	mustMkdirAll(t, filepath.Join(root, "uploads"))
+
+	mustWriteFileWithSize(t, filepath.Join(root, "root.bin"), 11)
+	mustWriteFileWithSize(t, filepath.Join(root, "archive", "a.bin"), 13)
+	mustWriteFileWithSize(t, filepath.Join(root, "archive", "nested", "b.bin"), 17)
+	mustWriteFileWithSize(t, filepath.Join(root, "uploads", "c.bin"), 19)
+
+	if err := os.Symlink(filepath.Join(root, "archive", "a.bin"), filepath.Join(root, "archive", "link.bin")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	scanner := NewPathScanner(root, true)
 	results, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)

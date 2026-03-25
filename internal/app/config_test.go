@@ -29,6 +29,23 @@ func TestParseConfigDefaultsAndNormalization(t *testing.T) {
 	if cfg.Collector.Timeout != 2*time.Minute {
 		t.Fatalf("expected default timeout 2m, got %s", cfg.Collector.Timeout)
 	}
+
+	if cfg.Filesystem.ReportChildDirs {
+		t.Fatal("expected report-child-dirs to default to false")
+	}
+}
+
+func TestParseConfigReportChildDirsFlag(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ParseConfig([]string{"--filesystem.path=/srv/data", "--filesystem.report-child-dirs=true"})
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+
+	if !cfg.Filesystem.ReportChildDirs {
+		t.Fatal("expected report-child-dirs to be true")
+	}
 }
 
 func TestParseConfigValidation(t *testing.T) {

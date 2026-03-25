@@ -17,7 +17,7 @@ import (
 )
 
 func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
-	scan := scanner.NewPathScanner(cfg.Filesystem.Path)
+	scan := scanner.NewPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs)
 	monitor := exporter.NewMonitor(scan, cfg.Collector.Interval, cfg.Collector.Timeout, logger)
 
 	if err := monitor.Refresh(ctx); err != nil {
@@ -61,6 +61,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 			"listen_address", cfg.ListenAddress,
 			"metrics_path", cfg.MetricsPath,
 			"filesystem_path", cfg.Filesystem.Path,
+			"filesystem_report_child_dirs", cfg.Filesystem.ReportChildDirs,
 		)
 		serverErrCh <- server.ListenAndServe()
 	}()

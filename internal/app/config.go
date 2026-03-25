@@ -16,7 +16,8 @@ type Config struct {
 }
 
 type FilesystemConfig struct {
-	Path string
+	Path            string
+	ReportChildDirs bool
 }
 
 type CollectorConfig struct {
@@ -42,6 +43,7 @@ func ParseConfig(args []string) (Config, error) {
 	fs.StringVar(&cfg.ListenAddress, "web.listen-address", cfg.ListenAddress, "Address to listen on for web interface and telemetry.")
 	fs.StringVar(&cfg.MetricsPath, "web.metrics-path", cfg.MetricsPath, "Path under which to expose Prometheus metrics.")
 	fs.StringVar(&cfg.Filesystem.Path, "filesystem.path", cfg.Filesystem.Path, "Mounted filesystem path to scan.")
+	fs.BoolVar(&cfg.Filesystem.ReportChildDirs, "filesystem.report-child-dirs", cfg.Filesystem.ReportChildDirs, "Whether to report metrics for immediate child directories under the mounted filesystem path.")
 	fs.DurationVar(&cfg.Collector.Interval, "collector.interval", cfg.Collector.Interval, "How often the exporter refreshes usage data.")
 	fs.DurationVar(&cfg.Collector.Timeout, "collector.timeout", cfg.Collector.Timeout, "Maximum time allowed for a single collection run.")
 

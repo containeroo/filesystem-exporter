@@ -1,6 +1,6 @@
 # filesystem-exporter
 
-`filesystem-exporter` scans an already-mounted filesystem path, reports usage for the root path and its immediate child directories, and exposes Prometheus metrics for capacity, availability, and used bytes.
+`filesystem-exporter` scans an already-mounted filesystem path, reports usage for the root path by default, and exposes Prometheus metrics for capacity, availability, and used bytes.
 
 The exporter is designed for Kubernetes and Prometheus-style operation:
 
@@ -11,12 +11,13 @@ The exporter is designed for Kubernetes and Prometheus-style operation:
 
 ## What it measures
 
-For a configured filesystem path such as `/data`, the exporter reports metrics for:
+For a configured filesystem path such as `/data`, the exporter always reports metrics for:
 
 - `/data`
-- each immediate child directory under `/data`, for example `/data/archive` and `/data/uploads`
 
-It does not descend deeper for label cardinality. The `used` metric for a child directory includes the full recursive size of that child subtree. Capacity and available bytes are derived from `statfs(2)` for the path being reported, which means sibling directories on the same filesystem typically share the same capacity and available values.
+If `-filesystem.report-child-dirs=true` is set, it also reports each immediate child directory under `/data`, for example `/data/archive` and `/data/uploads`.
+
+It does not descend deeper for label cardinality. When child-directory reporting is enabled, the `used` metric for a child directory includes the full recursive size of that child subtree. Capacity and available bytes are derived from `statfs(2)` for the path being reported, which means sibling directories on the same filesystem typically share the same capacity and available values.
 
 ## Requirements
 
@@ -30,6 +31,14 @@ The exporter does not mount or unmount filesystems itself. In Kubernetes, use a 
 ```bash
 go run ./cmd/filesystem-exporter \
   -filesystem.path=/data
+```
+
+Enable immediate child directory metrics explicitly if you need them:
+
+```bash
+go run ./cmd/filesystem-exporter \
+  -filesystem.path=/data \
+  -filesystem.report-child-dirs=true
 ```
 
 The exporter uses Go's standard `flag` package. It accepts both `-flag=value` and `--flag=value`, but the built-in help output uses the single-dash form, so the documentation does as well.
@@ -85,6 +94,7 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 | `-web.listen-address` | `:9799` | Address to listen on for HTTP traffic. |
 | `-web.metrics-path` | `/metrics` | HTTP path used to expose Prometheus metrics. |
 | `-filesystem.path` | `/data` | Absolute mounted filesystem path to scan. |
+| `-filesystem.report-child-dirs` | `false` | Also report metrics for immediate child directories under `-filesystem.path`. |
 | `-collector.interval` | `5m` | Background refresh interval for usage collection. |
 | `-collector.timeout` | `2m` | Timeout for an individual collection run. |
 
@@ -92,7 +102,7 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 
 ### Path metrics
 
-These metrics include the constant label `root_path`, plus a `path` label for the root path and each depth-1 child directory.
+These metrics include the constant label `root_path`, plus a `path` label for the root path. If `-filesystem.report-child-dirs=true` is enabled, they also include one series per depth-1 child directory.
 
 - `filesystem_path_capacity_bytes`
 - `filesystem_path_available_bytes`
