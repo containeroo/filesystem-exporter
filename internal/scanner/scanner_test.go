@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ func TestPathScannerReportsOnlyRootByDefault(t *testing.T) {
 		t.Fatalf("Symlink() error = %v", err)
 	}
 
-	scanner := NewPathScanner(root, false)
+	scanner := NewPathScanner(root, false, 1)
 	results, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -58,7 +59,7 @@ func TestPathScannerReportsRootAndDepthOneDirectoriesWhenEnabled(t *testing.T) {
 		t.Fatalf("Symlink() error = %v", err)
 	}
 
-	scanner := NewPathScanner(root, true)
+	scanner := NewPathScanner(root, true, 4)
 	results, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -86,29 +87,38 @@ func TestWalkRegularFilesIgnoresMissingEntries(t *testing.T) {
 	t.Parallel()
 
 	var sizes []float64
-	err := walkRegularFilesWithWalker(
+	err := walkRegularFilesWithIO(
 		context.Background(),
 		"/root",
+		4,
 		nil,
 		func(size float64) {
 			sizes = append(sizes, size)
 		},
-		func(root string, fn fs.WalkDirFunc) error {
-			if err := fn(root, fakeDirEntry{fileInfo: fakeFileInfo{mode: fs.ModeDir}}, nil); err != nil {
-				return err
+		func(root string) ([]os.DirEntry, error) {
+			switch root {
+			case "/root":
+				return []os.DirEntry{
+					fakeDirEntry{name: "gone.bin"},
+					fakeDirEntry{name: "still-there.bin"},
+				}, nil
+			default:
+				return nil, fmt.Errorf("unexpected ReadDir path %s", root)
 			}
-
-			if err := fn(filepath.Join(root, "gone.bin"), fakeDirEntry{}, fs.ErrNotExist); err != nil {
-				return err
+		},
+		func(path string) (fs.FileInfo, error) {
+			switch path {
+			case "/root/gone.bin":
+				return nil, fs.ErrNotExist
+			case "/root/still-there.bin":
+				return fakeFileInfo{size: 19, mode: 0}, nil
+			default:
+				return nil, fmt.Errorf("unexpected Lstat path %s", path)
 			}
-
-			return fn(filepath.Join(root, "still-there.bin"), fakeDirEntry{
-				fileInfo: fakeFileInfo{size: 19, mode: 0},
-			}, nil)
 		},
 	)
 	if err != nil {
-		t.Fatalf("walkRegularFilesWithWalker() error = %v", err)
+		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
 	}
 
 	if len(sizes) != 1 || sizes[0] != 19 {
@@ -120,30 +130,82 @@ func TestWalkRegularFilesIgnoresMissingInfoForEntries(t *testing.T) {
 	t.Parallel()
 
 	var sizes []float64
-	err := walkRegularFilesWithWalker(
+	err := walkRegularFilesWithIO(
 		context.Background(),
 		"/root",
+		4,
 		nil,
 		func(size float64) {
 			sizes = append(sizes, size)
 		},
-		func(root string, fn fs.WalkDirFunc) error {
-			if err := fn(root, fakeDirEntry{fileInfo: fakeFileInfo{mode: fs.ModeDir}}, nil); err != nil {
-				return err
+		func(root string) ([]os.DirEntry, error) {
+			switch root {
+			case "/root":
+				return []os.DirEntry{
+					fakeDirEntry{name: "gone-after-readdir.bin"},
+				}, nil
+			default:
+				return nil, fmt.Errorf("unexpected ReadDir path %s", root)
 			}
-
-			return fn(filepath.Join(root, "gone-after-readdir.bin"), fakeDirEntry{
-				fileInfo: fakeFileInfo{size: 17, mode: 0},
-				infoErr:  fs.ErrNotExist,
-			}, nil)
+		},
+		func(path string) (fs.FileInfo, error) {
+			switch path {
+			case "/root/gone-after-readdir.bin":
+				return nil, fs.ErrNotExist
+			default:
+				return nil, fmt.Errorf("unexpected Lstat path %s", path)
+			}
 		},
 	)
 	if err != nil {
-		t.Fatalf("walkRegularFilesWithWalker() error = %v", err)
+		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
 	}
 
 	if len(sizes) != 0 {
 		t.Fatalf("expected no counted sizes, got %v", sizes)
+	}
+}
+
+func TestWalkRegularFilesIgnoresMissingDirectories(t *testing.T) {
+	t.Parallel()
+
+	var sizes []float64
+	err := walkRegularFilesWithIO(
+		context.Background(),
+		"/root",
+		4,
+		nil,
+		func(size float64) {
+			sizes = append(sizes, size)
+		},
+		func(root string) ([]os.DirEntry, error) {
+			switch root {
+			case "/root":
+				return []os.DirEntry{
+					fakeDirEntry{name: "gone-dir", mode: fs.ModeDir},
+					fakeDirEntry{name: "still-there.bin"},
+				}, nil
+			case "/root/gone-dir":
+				return nil, fs.ErrNotExist
+			default:
+				return nil, fmt.Errorf("unexpected ReadDir path %s", root)
+			}
+		},
+		func(path string) (fs.FileInfo, error) {
+			switch path {
+			case "/root/still-there.bin":
+				return fakeFileInfo{size: 23, mode: 0}, nil
+			default:
+				return nil, fmt.Errorf("unexpected Lstat path %s", path)
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
+	}
+
+	if len(sizes) != 1 || sizes[0] != 23 {
+		t.Fatalf("expected counted sizes [23], got %v", sizes)
 	}
 }
 
@@ -179,14 +241,14 @@ func mustWriteFileWithSize(t *testing.T, filePath string, size int) {
 }
 
 type fakeDirEntry struct {
-	fileInfo fakeFileInfo
-	infoErr  error
+	name string
+	mode fs.FileMode
 }
 
-func (d fakeDirEntry) Name() string               { return "" }
-func (d fakeDirEntry) IsDir() bool                { return d.fileInfo.mode.IsDir() }
-func (d fakeDirEntry) Type() fs.FileMode          { return d.fileInfo.mode.Type() }
-func (d fakeDirEntry) Info() (fs.FileInfo, error) { return d.fileInfo, d.infoErr }
+func (d fakeDirEntry) Name() string               { return d.name }
+func (d fakeDirEntry) IsDir() bool                { return d.mode.IsDir() }
+func (d fakeDirEntry) Type() fs.FileMode          { return d.mode.Type() }
+func (d fakeDirEntry) Info() (fs.FileInfo, error) { return fakeFileInfo{mode: d.mode}, nil }
 
 type fakeFileInfo struct {
 	size int64

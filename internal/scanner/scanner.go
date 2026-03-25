@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"golang.org/x/sys/unix"
 
@@ -19,12 +20,18 @@ import (
 type PathScanner struct {
 	rootPath        string
 	reportChildDirs bool
+	scanConcurrency int
 }
 
-func NewPathScanner(rootPath string, reportChildDirs bool) *PathScanner {
+func NewPathScanner(rootPath string, reportChildDirs bool, scanConcurrency int) *PathScanner {
+	if scanConcurrency < 1 {
+		scanConcurrency = 1
+	}
+
 	return &PathScanner{
 		rootPath:        filepath.Clean(rootPath),
 		reportChildDirs: reportChildDirs,
+		scanConcurrency: scanConcurrency,
 	}
 }
 
@@ -41,8 +48,11 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 
 	rootLabel := filepath.ToSlash(filepath.Clean(s.rootPath))
 	if !s.reportChildDirs {
-		if err := walkRegularFiles(ctx, s.rootPath, nil, func(size float64) {
+		var mu sync.Mutex
+		if err := walkRegularFiles(ctx, s.rootPath, s.scanConcurrency, nil, func(size float64) {
+			mu.Lock()
 			rootStats.UsedBytes += size
+			mu.Unlock()
 		}); err != nil {
 			return nil, err
 		}
@@ -75,7 +85,11 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		usedBytes[label] = 0
 	}
 
-	err = walkRegularFiles(ctx, s.rootPath, func(filePath string, size float64) error {
+	var mu sync.Mutex
+	err = walkRegularFiles(ctx, s.rootPath, s.scanConcurrency, func(filePath string, size float64) error {
+		mu.Lock()
+		defer mu.Unlock()
+
 		usedBytes[rootLabel] += size
 		relativePath, err := filepath.Rel(s.rootPath, filePath)
 		if err != nil {
@@ -134,47 +148,123 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 func walkRegularFiles(
 	ctx context.Context,
 	rootPath string,
+	concurrency int,
 	perFile func(filePath string, size float64) error,
 	aggregate func(size float64),
 ) error {
-	return walkRegularFilesWithWalker(ctx, rootPath, perFile, aggregate, filepath.WalkDir)
+	return walkRegularFilesWithIO(ctx, rootPath, concurrency, perFile, aggregate, os.ReadDir, os.Lstat)
 }
 
-func walkRegularFilesWithWalker(
+type readDirFunc func(string) ([]os.DirEntry, error)
+type lstatFunc func(string) (fs.FileInfo, error)
+
+type walkJobKind int
+
+const (
+	walkJobDir walkJobKind = iota
+	walkJobFile
+)
+
+type walkJob struct {
+	kind walkJobKind
+	path string
+}
+
+func walkRegularFilesWithIO(
 	ctx context.Context,
 	rootPath string,
+	concurrency int,
 	perFile func(filePath string, size float64) error,
 	aggregate func(size float64),
-	walkDir func(root string, fn fs.WalkDirFunc) error,
+	readDir readDirFunc,
+	lstat lstatFunc,
 ) error {
-	return walkDir(rootPath, func(filePath string, dirEntry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if shouldIgnoreMissingPath(walkErr) {
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var errMu sync.Mutex
+	var firstErr error
+	recordErr := func(err error) {
+		if err == nil {
+			return
+		}
+
+		errMu.Lock()
+		defer errMu.Unlock()
+
+		if firstErr != nil {
+			return
+		}
+
+		firstErr = err
+		cancel()
+	}
+
+	jobs := make(chan walkJob, concurrency*4)
+
+	var taskWG sync.WaitGroup
+	enqueue := func(job walkJob) error {
+		taskWG.Add(1)
+
+		select {
+		case jobs <- job:
+			return nil
+		case <-ctx.Done():
+			taskWG.Done()
+			return ctx.Err()
+		}
+	}
+
+	processDir := func(dirPath string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		entries, err := readDir(dirPath)
+		if err != nil {
+			if shouldIgnoreMissingPath(err) {
 				return nil
 			}
 
-			return walkErr
+			return fmt.Errorf("read directory %s: %w", dirPath, err)
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
+			entryPath := filepath.Join(dirPath, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+
+			jobKind := walkJobFile
+			if entry.IsDir() {
+				jobKind = walkJobDir
+			}
+
+			if err := enqueue(walkJob{
+				kind: jobKind,
+				path: entryPath,
+			}); err != nil {
+				return err
+			}
 		}
 
-		if filePath == rootPath {
-			return nil
+		return nil
+	}
+
+	processFile := func(filePath string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		if dirEntry.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-
-		if dirEntry.IsDir() {
-			return nil
-		}
-
-		fileInfo, err := dirEntry.Info()
+		fileInfo, err := lstat(filePath)
 		if err != nil {
 			if shouldIgnoreMissingPath(err) {
 				return nil
@@ -182,7 +272,8 @@ func walkRegularFilesWithWalker(
 
 			return fmt.Errorf("stat file %s: %w", filePath, err)
 		}
-		if !fileInfo.Mode().IsRegular() {
+
+		if fileInfo.Mode()&os.ModeSymlink != 0 || !fileInfo.Mode().IsRegular() {
 			return nil
 		}
 
@@ -196,7 +287,61 @@ func walkRegularFilesWithWalker(
 		}
 
 		return nil
-	})
+	}
+
+	if err := enqueue(walkJob{
+		kind: walkJobDir,
+		path: rootPath,
+	}); err != nil {
+		return err
+	}
+
+	go func() {
+		taskWG.Wait()
+		close(jobs)
+	}()
+
+	var workerWG sync.WaitGroup
+	for range concurrency {
+		workerWG.Add(1)
+		go func() {
+			defer workerWG.Done()
+
+			for job := range jobs {
+				var err error
+				switch job.kind {
+				case walkJobDir:
+					err = processDir(job.path)
+				case walkJobFile:
+					err = processFile(job.path)
+				}
+
+				taskWG.Done()
+
+				if err == nil {
+					continue
+				}
+
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					continue
+				}
+
+				recordErr(err)
+			}
+		}()
+	}
+
+	workerWG.Wait()
+
+	if firstErr != nil {
+		return firstErr
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func shouldIgnoreMissingPath(err error) bool {

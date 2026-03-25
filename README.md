@@ -42,6 +42,14 @@ go run ./cmd/filesystem-exporter \
   -filesystem.report-child-dirs=true
 ```
 
+For filesystems with many small files, especially high-latency backends like NFS, you can increase scan parallelism:
+
+```bash
+go run ./cmd/filesystem-exporter \
+  -filesystem.path=/data \
+  -filesystem.scan-concurrency=8
+```
+
 The exporter uses Go's standard `flag` package. It accepts both `-flag=value` and `--flag=value`, but the built-in help output uses the single-dash form, so the documentation does as well.
 
 Then scrape:
@@ -96,6 +104,7 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 | `-web.metrics-path` | `/metrics` | HTTP path used to expose Prometheus metrics. |
 | `-filesystem.path` | `/data` | Absolute mounted filesystem path to scan. |
 | `-filesystem.report-child-dirs` | `false` | Also report metrics for immediate child directories under `-filesystem.path`. |
+| `-filesystem.scan-concurrency` | `1` | Maximum number of concurrent directory and file metadata operations during a scan. Higher values can help on NFS or small-file workloads. |
 | `-collector.interval` | `5m` | Background refresh interval for usage collection. |
 | `-collector.timeout` | `2m` | Timeout for an individual collection run. |
 

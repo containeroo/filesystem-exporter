@@ -33,6 +33,10 @@ func TestParseConfigDefaultsAndNormalization(t *testing.T) {
 	if cfg.Filesystem.ReportChildDirs {
 		t.Fatal("expected report-child-dirs to default to false")
 	}
+
+	if cfg.Filesystem.ScanConcurrency != 1 {
+		t.Fatalf("expected default scan concurrency 1, got %d", cfg.Filesystem.ScanConcurrency)
+	}
 }
 
 func TestParseConfigReportChildDirsFlag(t *testing.T) {
@@ -45,6 +49,19 @@ func TestParseConfigReportChildDirsFlag(t *testing.T) {
 
 	if !cfg.Filesystem.ReportChildDirs {
 		t.Fatal("expected report-child-dirs to be true")
+	}
+}
+
+func TestParseConfigScanConcurrencyFlag(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ParseConfig([]string{"--filesystem.path=/srv/data", "--filesystem.scan-concurrency=8"})
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+
+	if cfg.Filesystem.ScanConcurrency != 8 {
+		t.Fatalf("expected scan concurrency 8, got %d", cfg.Filesystem.ScanConcurrency)
 	}
 }
 
@@ -75,6 +92,11 @@ func TestParseConfigValidation(t *testing.T) {
 			name:    "invalid timeout",
 			args:    []string{"--filesystem.path=/data", "--collector.timeout=0s"},
 			wantErr: "-collector.timeout must be greater than 0",
+		},
+		{
+			name:    "invalid scan concurrency",
+			args:    []string{"--filesystem.path=/data", "--filesystem.scan-concurrency=0"},
+			wantErr: "-filesystem.scan-concurrency must be greater than 0",
 		},
 	}
 

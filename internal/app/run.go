@@ -17,8 +17,8 @@ import (
 	"github.com/containeroo/filesystem-exporter/internal/scanner"
 )
 
-var newPathScanner = func(rootPath string, reportChildDirs bool) exporter.Scanner {
-	return scanner.NewPathScanner(rootPath, reportChildDirs)
+var newPathScanner = func(rootPath string, reportChildDirs bool, scanConcurrency int) exporter.Scanner {
+	return scanner.NewPathScanner(rootPath, reportChildDirs, scanConcurrency)
 }
 
 var listen = net.Listen
@@ -28,7 +28,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 		return fmt.Errorf("validate filesystem path %s: %w", cfg.Filesystem.Path, err)
 	}
 
-	scan := newPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs)
+	scan := newPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs, cfg.Filesystem.ScanConcurrency)
 	monitor := exporter.NewMonitor(scan, cfg.Collector.Interval, cfg.Collector.Timeout, logger)
 
 	registry := prometheus.NewRegistry()
@@ -72,6 +72,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 			"metrics_path", cfg.MetricsPath,
 			"filesystem_path", cfg.Filesystem.Path,
 			"filesystem_report_child_dirs", cfg.Filesystem.ReportChildDirs,
+			"filesystem_scan_concurrency", cfg.Filesystem.ScanConcurrency,
 		)
 		serverErrCh <- server.Serve(listener)
 	}()

@@ -44,7 +44,7 @@ func TestRunServesHealthAndReadinessWhileInitialCollectionIsRunning(t *testing.T
 	}
 
 	originalNewPathScanner := newPathScanner
-	newPathScanner = func(string, bool) exporter.Scanner {
+	newPathScanner = func(string, bool, int) exporter.Scanner {
 		return scanner
 	}
 	defer func() {
@@ -75,7 +75,8 @@ func TestRunServesHealthAndReadinessWhileInitialCollectionIsRunning(t *testing.T
 			ListenAddress: "127.0.0.1:0",
 			MetricsPath:   "/metrics",
 			Filesystem: FilesystemConfig{
-				Path: root,
+				Path:            root,
+				ScanConcurrency: 1,
 			},
 			Collector: CollectorConfig{
 				Interval: time.Hour,
@@ -108,7 +109,8 @@ func TestRunFailsFastWhenFilesystemPathIsUnavailable(t *testing.T) {
 		ListenAddress: "127.0.0.1:0",
 		MetricsPath:   "/metrics",
 		Filesystem: FilesystemConfig{
-			Path: "/path/that/does/not/exist",
+			Path:            "/path/that/does/not/exist",
+			ScanConcurrency: 1,
 		},
 		Collector: CollectorConfig{
 			Interval: time.Hour,
