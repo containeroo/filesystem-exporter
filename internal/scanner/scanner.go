@@ -170,6 +170,86 @@ type walkJob struct {
 	path string
 }
 
+var errWalkQueueClosed = errors.New("walk queue closed")
+
+type walkQueue struct {
+	mu      sync.Mutex
+	cond    *sync.Cond
+	jobs    []walkJob
+	head    int
+	pending int
+	closed  bool
+}
+
+func newWalkQueue() *walkQueue {
+	queue := &walkQueue{}
+	queue.cond = sync.NewCond(&queue.mu)
+	return queue
+}
+
+func (q *walkQueue) Enqueue(job walkJob) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.closed {
+		return errWalkQueueClosed
+	}
+
+	q.jobs = append(q.jobs, job)
+	q.pending++
+	q.cond.Signal()
+	return nil
+}
+
+func (q *walkQueue) Dequeue() (walkJob, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	for q.head >= len(q.jobs) && !q.closed {
+		q.cond.Wait()
+	}
+
+	if q.head >= len(q.jobs) {
+		return walkJob{}, false
+	}
+
+	job := q.jobs[q.head]
+	q.head++
+	if q.head >= len(q.jobs) {
+		q.jobs = nil
+		q.head = 0
+	}
+
+	return job, true
+}
+
+func (q *walkQueue) Done() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.pending == 0 {
+		return
+	}
+
+	q.pending--
+	if q.pending == 0 {
+		q.closed = true
+		q.cond.Broadcast()
+	}
+}
+
+func (q *walkQueue) Close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.closed {
+		return
+	}
+
+	q.closed = true
+	q.cond.Broadcast()
+}
+
 func walkRegularFilesWithIO(
 	ctx context.Context,
 	rootPath string,
@@ -185,6 +265,12 @@ func walkRegularFilesWithIO(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	queue := newWalkQueue()
+	go func() {
+		<-ctx.Done()
+		queue.Close()
+	}()
 
 	var errMu sync.Mutex
 	var firstErr error
@@ -202,21 +288,7 @@ func walkRegularFilesWithIO(
 
 		firstErr = err
 		cancel()
-	}
-
-	jobs := make(chan walkJob, concurrency*4)
-
-	var taskWG sync.WaitGroup
-	enqueue := func(job walkJob) error {
-		taskWG.Add(1)
-
-		select {
-		case jobs <- job:
-			return nil
-		case <-ctx.Done():
-			taskWG.Done()
-			return ctx.Err()
-		}
+		queue.Close()
 	}
 
 	processDir := func(dirPath string) error {
@@ -248,10 +320,14 @@ func walkRegularFilesWithIO(
 				jobKind = walkJobDir
 			}
 
-			if err := enqueue(walkJob{
+			if err := queue.Enqueue(walkJob{
 				kind: jobKind,
 				path: entryPath,
 			}); err != nil {
+				if errors.Is(err, errWalkQueueClosed) {
+					return ctx.Err()
+				}
+
 				return err
 			}
 		}
@@ -289,17 +365,12 @@ func walkRegularFilesWithIO(
 		return nil
 	}
 
-	if err := enqueue(walkJob{
+	if err := queue.Enqueue(walkJob{
 		kind: walkJobDir,
 		path: rootPath,
 	}); err != nil {
 		return err
 	}
-
-	go func() {
-		taskWG.Wait()
-		close(jobs)
-	}()
 
 	var workerWG sync.WaitGroup
 	for range concurrency {
@@ -307,7 +378,12 @@ func walkRegularFilesWithIO(
 		go func() {
 			defer workerWG.Done()
 
-			for job := range jobs {
+			for {
+				job, ok := queue.Dequeue()
+				if !ok {
+					return
+				}
+
 				var err error
 				switch job.kind {
 				case walkJobDir:
@@ -316,7 +392,7 @@ func walkRegularFilesWithIO(
 					err = processFile(job.path)
 				}
 
-				taskWG.Done()
+				queue.Done()
 
 				if err == nil {
 					continue

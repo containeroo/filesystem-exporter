@@ -209,6 +209,54 @@ func TestWalkRegularFilesIgnoresMissingDirectories(t *testing.T) {
 	}
 }
 
+func TestWalkRegularFilesDoesNotDeadlockWithSingleWorkerAndManyEntries(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	var sizes []float64
+	err := walkRegularFilesWithIO(
+		ctx,
+		"/root",
+		1,
+		nil,
+		func(size float64) {
+			sizes = append(sizes, size)
+		},
+		func(root string) ([]os.DirEntry, error) {
+			switch root {
+			case "/root":
+				return []os.DirEntry{
+					fakeDirEntry{name: "a.bin"},
+					fakeDirEntry{name: "b.bin"},
+					fakeDirEntry{name: "c.bin"},
+					fakeDirEntry{name: "d.bin"},
+					fakeDirEntry{name: "e.bin"},
+					fakeDirEntry{name: "f.bin"},
+				}, nil
+			default:
+				return nil, fmt.Errorf("unexpected ReadDir path %s", root)
+			}
+		},
+		func(path string) (fs.FileInfo, error) {
+			switch path {
+			case "/root/a.bin", "/root/b.bin", "/root/c.bin", "/root/d.bin", "/root/e.bin", "/root/f.bin":
+				return fakeFileInfo{size: 1, mode: 0}, nil
+			default:
+				return nil, fmt.Errorf("unexpected Lstat path %s", path)
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
+	}
+
+	if len(sizes) != 6 {
+		t.Fatalf("expected 6 counted sizes, got %v", sizes)
+	}
+}
+
 func assertUsage(t *testing.T, results []usage.PathUsage, path string, wantUsed float64) {
 	t.Helper()
 
