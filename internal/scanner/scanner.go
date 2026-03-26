@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sys/unix"
 
@@ -40,34 +41,38 @@ func ValidatePath(target string) error {
 	return err
 }
 
-func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
+func (s *PathScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
 	rootStats, err := statPath(s.rootPath)
 	if err != nil {
-		return nil, err
+		return usage.ScanResult{}, err
 	}
 
 	rootLabel := filepath.ToSlash(filepath.Clean(s.rootPath))
 	if !s.reportChildDirs {
+		scanStats := usage.ScanStats{}
 		var mu sync.Mutex
 		if err := walkRegularFiles(ctx, s.rootPath, s.scanConcurrency, nil, func(size float64) {
 			mu.Lock()
 			rootStats.UsedBytes += size
 			mu.Unlock()
-		}); err != nil {
-			return nil, err
+		}, &scanStats); err != nil {
+			return usage.ScanResult{}, err
 		}
 
-		return []usage.PathUsage{{
-			Path:           rootLabel,
-			CapacityBytes:  rootStats.CapacityBytes,
-			AvailableBytes: rootStats.AvailableBytes,
-			UsedBytes:      rootStats.UsedBytes,
-		}}, nil
+		return usage.ScanResult{
+			Usages: []usage.PathUsage{{
+				Path:           rootLabel,
+				CapacityBytes:  rootStats.CapacityBytes,
+				AvailableBytes: rootStats.AvailableBytes,
+				UsedBytes:      rootStats.UsedBytes,
+			}},
+			Stats: scanStats,
+		}, nil
 	}
 
 	entries, err := os.ReadDir(s.rootPath)
 	if err != nil {
-		return nil, fmt.Errorf("read root directory %s: %w", s.rootPath, err)
+		return usage.ScanResult{}, fmt.Errorf("read root directory %s: %w", s.rootPath, err)
 	}
 
 	childPaths := make(map[string]string)
@@ -85,6 +90,7 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		usedBytes[label] = 0
 	}
 
+	scanStats := usage.ScanStats{}
 	var mu sync.Mutex
 	err = walkRegularFiles(ctx, s.rootPath, s.scanConcurrency, func(filePath string, size float64) error {
 		mu.Lock()
@@ -102,9 +108,9 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		}
 
 		return nil
-	}, nil)
+	}, nil, &scanStats)
 	if err != nil {
-		return nil, err
+		return usage.ScanResult{}, err
 	}
 
 	results := make([]usage.PathUsage, 0, len(childPaths)+1)
@@ -128,10 +134,11 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		stats, err := statPath(localPath)
 		if err != nil {
 			if shouldIgnoreMissingPath(err) {
+				scanStats.IgnoredMissingPaths++
 				continue
 			}
 
-			return nil, err
+			return usage.ScanResult{}, err
 		}
 
 		results = append(results, usage.PathUsage{
@@ -142,7 +149,10 @@ func (s *PathScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 		})
 	}
 
-	return results, nil
+	return usage.ScanResult{
+		Usages: results,
+		Stats:  scanStats,
+	}, nil
 }
 
 func walkRegularFiles(
@@ -151,8 +161,9 @@ func walkRegularFiles(
 	concurrency int,
 	perFile func(filePath string, size float64) error,
 	aggregate func(size float64),
+	stats *usage.ScanStats,
 ) error {
-	return walkRegularFilesWithIO(ctx, rootPath, concurrency, perFile, aggregate, os.ReadDir, os.Lstat)
+	return walkRegularFilesWithIO(ctx, rootPath, concurrency, perFile, aggregate, os.ReadDir, os.Lstat, stats)
 }
 
 type readDirFunc func(string) ([]os.DirEntry, error)
@@ -258,6 +269,7 @@ func walkRegularFilesWithIO(
 	aggregate func(size float64),
 	readDir readDirFunc,
 	lstat lstatFunc,
+	stats *usage.ScanStats,
 ) error {
 	if concurrency < 1 {
 		concurrency = 1
@@ -265,6 +277,19 @@ func walkRegularFilesWithIO(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	var directoriesSeen atomic.Int64
+	var filesStatted atomic.Int64
+	var ignoredMissingPath atomic.Int64
+	defer func() {
+		if stats == nil {
+			return
+		}
+
+		stats.DirectoriesSeen = directoriesSeen.Load()
+		stats.FilesStatted = filesStatted.Load()
+		stats.IgnoredMissingPaths = ignoredMissingPath.Load()
+	}()
 
 	queue := newWalkQueue()
 	go func() {
@@ -299,11 +324,13 @@ func walkRegularFilesWithIO(
 		entries, err := readDir(dirPath)
 		if err != nil {
 			if shouldIgnoreMissingPath(err) {
+				ignoredMissingPath.Add(1)
 				return nil
 			}
 
 			return fmt.Errorf("read directory %s: %w", dirPath, err)
 		}
+		directoriesSeen.Add(1)
 
 		for _, entry := range entries {
 			if err := ctx.Err(); err != nil {
@@ -343,11 +370,13 @@ func walkRegularFilesWithIO(
 		fileInfo, err := lstat(filePath)
 		if err != nil {
 			if shouldIgnoreMissingPath(err) {
+				ignoredMissingPath.Add(1)
 				return nil
 			}
 
 			return fmt.Errorf("stat file %s: %w", filePath, err)
 		}
+		filesStatted.Add(1)
 
 		if fileInfo.Mode()&os.ModeSymlink != 0 || !fileInfo.Mode().IsRegular() {
 			return nil

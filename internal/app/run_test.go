@@ -19,7 +19,7 @@ type blockingScanner struct {
 	release chan struct{}
 }
 
-func (s *blockingScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
+func (s *blockingScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
 	select {
 	case s.started <- struct{}{}:
 	default:
@@ -27,11 +27,13 @@ func (s *blockingScanner) Scan(ctx context.Context) ([]usage.PathUsage, error) {
 
 	select {
 	case <-s.release:
-		return []usage.PathUsage{
-			{Path: "/data", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
+		return usage.ScanResult{
+			Usages: []usage.PathUsage{
+				{Path: "/data", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
+			},
 		}, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return usage.ScanResult{}, ctx.Err()
 	}
 }
 

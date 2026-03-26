@@ -3,6 +3,7 @@ package app
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 type Config struct {
 	ListenAddress string
 	MetricsPath   string
+	LogLevel      string
 	Filesystem    FilesystemConfig
 	Collector     CollectorConfig
 }
@@ -30,6 +32,7 @@ func ParseConfig(args []string) (Config, error) {
 	cfg := Config{
 		ListenAddress: ":9799",
 		MetricsPath:   "/metrics",
+		LogLevel:      "info",
 		Filesystem: FilesystemConfig{
 			Path:            "/data",
 			ScanConcurrency: 1,
@@ -44,6 +47,7 @@ func ParseConfig(args []string) (Config, error) {
 
 	fs.StringVar(&cfg.ListenAddress, "web.listen-address", cfg.ListenAddress, "Address to listen on for web interface and telemetry.")
 	fs.StringVar(&cfg.MetricsPath, "web.metrics-path", cfg.MetricsPath, "Path under which to expose Prometheus metrics.")
+	fs.StringVar(&cfg.LogLevel, "log.level", cfg.LogLevel, "Log level: debug, info, warn, or error.")
 	fs.StringVar(&cfg.Filesystem.Path, "filesystem.path", cfg.Filesystem.Path, "Mounted filesystem path to scan.")
 	fs.BoolVar(&cfg.Filesystem.ReportChildDirs, "filesystem.report-child-dirs", cfg.Filesystem.ReportChildDirs, "Whether to report metrics for immediate child directories under the mounted filesystem path.")
 	fs.IntVar(&cfg.Filesystem.ScanConcurrency, "filesystem.scan-concurrency", cfg.Filesystem.ScanConcurrency, "Maximum number of concurrent directory and file metadata operations during a scan.")
@@ -56,6 +60,7 @@ func ParseConfig(args []string) (Config, error) {
 
 	cfg.Filesystem.Path = normalizeFilesystemPath(cfg.Filesystem.Path)
 	cfg.MetricsPath = normalizeMetricsPath(cfg.MetricsPath)
+	cfg.LogLevel = normalizeLogLevel(cfg.LogLevel)
 
 	if cfg.Filesystem.Path == "" {
 		return Config{}, fmt.Errorf("flag -filesystem.path is required")
@@ -75,6 +80,10 @@ func ParseConfig(args []string) (Config, error) {
 
 	if cfg.Filesystem.ScanConcurrency <= 0 {
 		return Config{}, fmt.Errorf("flag -filesystem.scan-concurrency must be greater than 0")
+	}
+
+	if _, err := ParseLogLevel(cfg.LogLevel); err != nil {
+		return Config{}, fmt.Errorf("flag -log.level %w", err)
 	}
 
 	return cfg, nil
@@ -97,4 +106,23 @@ func normalizeMetricsPath(value string) string {
 		return "/" + cleaned
 	}
 	return cleaned
+}
+
+func normalizeLogLevel(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func ParseLogLevel(value string) (slog.Level, error) {
+	switch normalizeLogLevel(value) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("must be one of debug, info, warn, or error")
+	}
 }

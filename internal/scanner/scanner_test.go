@@ -30,16 +30,16 @@ func TestPathScannerReportsOnlyRootByDefault(t *testing.T) {
 	}
 
 	scanner := NewPathScanner(root, false, 1)
-	results, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 
-	if len(results) != 1 {
-		t.Fatalf("expected 1 usage entry, got %d", len(results))
+	if len(result.Usages) != 1 {
+		t.Fatalf("expected 1 usage entry, got %d", len(result.Usages))
 	}
 
-	assertUsage(t, results, root, 60)
+	assertUsage(t, result.Usages, root, 60)
 }
 
 func TestPathScannerReportsRootAndDepthOneDirectoriesWhenEnabled(t *testing.T) {
@@ -60,25 +60,25 @@ func TestPathScannerReportsRootAndDepthOneDirectoriesWhenEnabled(t *testing.T) {
 	}
 
 	scanner := NewPathScanner(root, true, 4)
-	results, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 
-	if len(results) != 3 {
-		t.Fatalf("expected 3 usage entries, got %d", len(results))
+	if len(result.Usages) != 3 {
+		t.Fatalf("expected 3 usage entries, got %d", len(result.Usages))
 	}
 
-	assertUsage(t, results, root, 60)
-	assertUsage(t, results, filepath.ToSlash(filepath.Join(root, "archive")), 30)
-	assertUsage(t, results, filepath.ToSlash(filepath.Join(root, "uploads")), 19)
+	assertUsage(t, result.Usages, root, 60)
+	assertUsage(t, result.Usages, filepath.ToSlash(filepath.Join(root, "archive")), 30)
+	assertUsage(t, result.Usages, filepath.ToSlash(filepath.Join(root, "uploads")), 19)
 
-	for _, result := range results {
-		if result.CapacityBytes <= 0 {
-			t.Fatalf("expected capacity for %s to be > 0, got %v", result.Path, result.CapacityBytes)
+	for _, usage := range result.Usages {
+		if usage.CapacityBytes <= 0 {
+			t.Fatalf("expected capacity for %s to be > 0, got %v", usage.Path, usage.CapacityBytes)
 		}
-		if result.AvailableBytes < 0 {
-			t.Fatalf("expected available bytes for %s to be >= 0, got %v", result.Path, result.AvailableBytes)
+		if usage.AvailableBytes < 0 {
+			t.Fatalf("expected available bytes for %s to be >= 0, got %v", usage.Path, usage.AvailableBytes)
 		}
 	}
 }
@@ -116,6 +116,7 @@ func TestWalkRegularFilesIgnoresMissingEntries(t *testing.T) {
 				return nil, fmt.Errorf("unexpected Lstat path %s", path)
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
@@ -156,6 +157,7 @@ func TestWalkRegularFilesIgnoresMissingInfoForEntries(t *testing.T) {
 				return nil, fmt.Errorf("unexpected Lstat path %s", path)
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
@@ -199,6 +201,7 @@ func TestWalkRegularFilesIgnoresMissingDirectories(t *testing.T) {
 				return nil, fmt.Errorf("unexpected Lstat path %s", path)
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("walkRegularFilesWithIO() error = %v", err)
@@ -247,6 +250,7 @@ func TestWalkRegularFilesDoesNotDeadlockWithSingleWorkerAndManyEntries(t *testin
 				return nil, fmt.Errorf("unexpected Lstat path %s", path)
 			}
 		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("walkRegularFilesWithIO() error = %v", err)

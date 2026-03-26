@@ -1,9 +1,11 @@
 package exporter
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,15 +16,15 @@ import (
 )
 
 type fakeScanner struct {
-	results []usage.PathUsage
-	err     error
+	result usage.ScanResult
+	err    error
 }
 
-func (f *fakeScanner) Scan(context.Context) ([]usage.PathUsage, error) {
+func (f *fakeScanner) Scan(context.Context) (usage.ScanResult, error) {
 	if f.err != nil {
-		return nil, f.err
+		return usage.ScanResult{}, f.err
 	}
-	return f.results, nil
+	return f.result, nil
 }
 
 func TestCollectorExportsMetricsFromLastSuccessfulSnapshot(t *testing.T) {
@@ -30,9 +32,11 @@ func TestCollectorExportsMetricsFromLastSuccessfulSnapshot(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	scanner := &fakeScanner{
-		results: []usage.PathUsage{
-			{Path: "/data", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
-			{Path: "/data/archive", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 250},
+		result: usage.ScanResult{
+			Usages: []usage.PathUsage{
+				{Path: "/data", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
+				{Path: "/data/archive", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 250},
+			},
 		},
 	}
 
@@ -64,8 +68,10 @@ func TestMonitorKeepsLastSuccessfulSnapshotOnFailure(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	scanner := &fakeScanner{
-		results: []usage.PathUsage{
-			{Path: "/data", CapacityBytes: 1000, AvailableBytes: 500, UsedBytes: 500},
+		result: usage.ScanResult{
+			Usages: []usage.PathUsage{
+				{Path: "/data", CapacityBytes: 1000, AvailableBytes: 500, UsedBytes: 500},
+			},
 		},
 	}
 
@@ -91,6 +97,72 @@ func TestMonitorKeepsLastSuccessfulSnapshotOnFailure(t *testing.T) {
 		"root_path": "/data",
 		"path":      "/data",
 	}, 500)
+}
+
+func TestMonitorLogsInitialSuccessAndDebugLifecycle(t *testing.T) {
+	t.Parallel()
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	scanner := &fakeScanner{
+		result: usage.ScanResult{
+			Usages: []usage.PathUsage{
+				{Path: "/data", CapacityBytes: 1000, AvailableBytes: 500, UsedBytes: 500},
+			},
+			Stats: usage.ScanStats{
+				DirectoriesSeen:     3,
+				FilesStatted:        9,
+				IgnoredMissingPaths: 1,
+			},
+		},
+	}
+
+	monitor := NewMonitor(scanner, time.Minute, time.Second, logger)
+	if err := monitor.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	logOutput := logBuf.String()
+	for _, want := range []string{
+		"level=DEBUG msg=\"starting collection\"",
+		"level=DEBUG msg=\"collection completed\"",
+		"level=INFO msg=\"initial collection succeeded\"",
+		"reported_paths=1",
+		"directories_seen=3",
+		"files_statted=9",
+		"ignored_missing_paths=1",
+	} {
+		if !strings.Contains(logOutput, want) {
+			t.Fatalf("expected log output to contain %q, got %q", want, logOutput)
+		}
+	}
+}
+
+func TestMonitorLogsTimeoutsExplicitly(t *testing.T) {
+	t.Parallel()
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	scanner := &fakeScanner{
+		err: context.DeadlineExceeded,
+	}
+
+	monitor := NewMonitor(scanner, time.Minute, time.Second, logger)
+	if err := monitor.Refresh(context.Background()); err == nil {
+		t.Fatal("expected Refresh() error, got nil")
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "level=ERROR msg=\"collection timed out\"") {
+		t.Fatalf("expected timeout log, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, "timeout=1s") {
+		t.Fatalf("expected timeout field in log output, got %q", logOutput)
+	}
 }
 
 func assertMetricValue(t *testing.T, registry *prometheus.Registry, name string, labels map[string]string, want float64) {

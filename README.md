@@ -50,6 +50,14 @@ go run ./cmd/filesystem-exporter \
   -filesystem.scan-concurrency=8
 ```
 
+Enable per-scan lifecycle logs while tuning or troubleshooting:
+
+```bash
+go run ./cmd/filesystem-exporter \
+  -filesystem.path=/data \
+  -log.level=debug
+```
+
 The exporter uses Go's standard `flag` package. It accepts both `-flag=value` and `--flag=value`, but the built-in help output uses the single-dash form, so the documentation does as well.
 
 Then scrape:
@@ -102,6 +110,7 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 | --- | --- | --- |
 | `-web.listen-address` | `:9799` | Address to listen on for HTTP traffic. |
 | `-web.metrics-path` | `/metrics` | HTTP path used to expose Prometheus metrics. |
+| `-log.level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. Debug includes every collection start and successful completion summary. |
 | `-filesystem.path` | `/data` | Absolute mounted filesystem path to scan. |
 | `-filesystem.report-child-dirs` | `false` | Also report metrics for immediate child directories under `-filesystem.path`. |
 | `-filesystem.scan-concurrency` | `1` | Maximum number of concurrent directory and file metadata operations during a scan. Higher values can help on NFS or small-file workloads. |

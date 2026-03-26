@@ -25,6 +25,16 @@ func main() {
 		os.Exit(2)
 	}
 
+	logLevel, err := app.ParseLogLevel(cfg.LogLevel)
+	if err != nil {
+		logger.Error("invalid log level", "log_level", cfg.LogLevel, "err", err)
+		os.Exit(2)
+	}
+
+	logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

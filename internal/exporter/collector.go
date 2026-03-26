@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,7 +13,7 @@ import (
 )
 
 type Scanner interface {
-	Scan(ctx context.Context) ([]usage.PathUsage, error)
+	Scan(ctx context.Context) (usage.ScanResult, error)
 }
 
 type Snapshot struct {
@@ -50,8 +51,8 @@ func (m *Monitor) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := m.Refresh(ctx); err != nil {
-				m.logger.Error("collection failed", "err", err)
+			if err := m.Refresh(ctx); err != nil && errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				return
 			}
 		}
 	}
@@ -59,26 +60,60 @@ func (m *Monitor) Run(ctx context.Context) {
 
 func (m *Monitor) Refresh(ctx context.Context) error {
 	start := time.Now()
+	m.logger.Debug("starting collection")
+
 	scanCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
 
-	usages, err := m.scanner.Scan(scanCtx)
+	result, err := m.scanner.Scan(scanCtx)
 	now := time.Now()
-	duration := now.Sub(start).Seconds()
+	duration := now.Sub(start)
+
+	if duration >= m.timeout*8/10 {
+		m.logger.Warn("collection is slow", "duration", duration, "timeout", m.timeout)
+	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	previousCollected := m.snapshot.CollectTimestamp > 0
+	previousSuccess := m.snapshot.CollectSuccess == 1
 
-	m.snapshot.CollectDuration = duration
+	m.snapshot.CollectDuration = duration.Seconds()
 	m.snapshot.CollectTimestamp = float64(now.Unix())
 
 	if err != nil {
 		m.snapshot.CollectSuccess = 0
+		m.mu.Unlock()
+
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			m.logger.Error("collection timed out", "duration", duration, "timeout", m.timeout, "err", err)
+		case errors.Is(err, context.Canceled):
+		default:
+			m.logger.Error("collection failed", "duration", duration, "err", err)
+		}
+
 		return err
 	}
 
 	m.snapshot.CollectSuccess = 1
-	m.snapshot.Usages = cloneUsages(usages)
+	m.snapshot.Usages = cloneUsages(result.Usages)
+	m.mu.Unlock()
+
+	successAttrs := []any{
+		"duration", duration,
+		"reported_paths", len(result.Usages),
+		"directories_seen", result.Stats.DirectoriesSeen,
+		"files_statted", result.Stats.FilesStatted,
+		"ignored_missing_paths", result.Stats.IgnoredMissingPaths,
+	}
+
+	m.logger.Debug("collection completed", successAttrs...)
+	if !previousCollected {
+		m.logger.Info("initial collection succeeded", successAttrs...)
+	} else if !previousSuccess {
+		m.logger.Info("collection recovered", successAttrs...)
+	}
+
 	return nil
 }
 

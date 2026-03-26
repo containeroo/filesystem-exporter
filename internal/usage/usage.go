@@ -6,3 +6,14 @@ type PathUsage struct {
 	AvailableBytes float64
 	UsedBytes      float64
 }
+
+type ScanStats struct {
+	DirectoriesSeen     int64
+	FilesStatted        int64
+	IgnoredMissingPaths int64
+}
+
+type ScanResult struct {
+	Usages []PathUsage
+	Stats  ScanStats
+}

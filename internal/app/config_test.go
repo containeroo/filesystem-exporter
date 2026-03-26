@@ -22,6 +22,10 @@ func TestParseConfigDefaultsAndNormalization(t *testing.T) {
 		t.Fatalf("expected normalized metrics path /custom, got %q", cfg.MetricsPath)
 	}
 
+	if cfg.LogLevel != "info" {
+		t.Fatalf("expected default log level info, got %q", cfg.LogLevel)
+	}
+
 	if cfg.Collector.Interval != 5*time.Minute {
 		t.Fatalf("expected default interval 5m, got %s", cfg.Collector.Interval)
 	}
@@ -65,6 +69,19 @@ func TestParseConfigScanConcurrencyFlag(t *testing.T) {
 	}
 }
 
+func TestParseConfigLogLevelFlag(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ParseConfig([]string{"--filesystem.path=/srv/data", "--log.level=DEBUG"})
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("expected normalized log level debug, got %q", cfg.LogLevel)
+	}
+}
+
 func TestParseConfigValidation(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +114,11 @@ func TestParseConfigValidation(t *testing.T) {
 			name:    "invalid scan concurrency",
 			args:    []string{"--filesystem.path=/data", "--filesystem.scan-concurrency=0"},
 			wantErr: "-filesystem.scan-concurrency must be greater than 0",
+		},
+		{
+			name:    "invalid log level",
+			args:    []string{"--filesystem.path=/data", "--log.level=trace"},
+			wantErr: "-log.level must be one of debug, info, warn, or error",
 		},
 	}
 

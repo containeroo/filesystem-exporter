@@ -29,7 +29,15 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	}
 
 	scan := newPathScanner(cfg.Filesystem.Path, cfg.Filesystem.ReportChildDirs, cfg.Filesystem.ScanConcurrency)
-	monitor := exporter.NewMonitor(scan, cfg.Collector.Interval, cfg.Collector.Timeout, logger)
+	monitor := exporter.NewMonitor(
+		scan,
+		cfg.Collector.Interval,
+		cfg.Collector.Timeout,
+		logger.With(
+			"filesystem_path", cfg.Filesystem.Path,
+			"filesystem_scan_concurrency", cfg.Filesystem.ScanConcurrency,
+		),
+	)
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
@@ -68,8 +76,9 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	go func() {
 		logger.Info(
 			"starting filesystem exporter",
-			"listen_address", cfg.ListenAddress,
+			"listen_address", listener.Addr().String(),
 			"metrics_path", cfg.MetricsPath,
+			"log_level", cfg.LogLevel,
 			"filesystem_path", cfg.Filesystem.Path,
 			"filesystem_report_child_dirs", cfg.Filesystem.ReportChildDirs,
 			"filesystem_scan_concurrency", cfg.Filesystem.ScanConcurrency,
@@ -78,9 +87,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger) error {
 	}()
 
 	go func() {
-		if err := monitor.Refresh(ctx); err != nil {
-			logger.Error("initial collection failed", "filesystem_path", cfg.Filesystem.Path, "err", err)
-		}
+		_ = monitor.Refresh(ctx)
 		monitor.Run(ctx)
 	}()
 
