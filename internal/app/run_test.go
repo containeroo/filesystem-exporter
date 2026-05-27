@@ -256,7 +256,9 @@ func scrapeMetricFamilies(url string) (map[string]*dto.MetricFamily, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
