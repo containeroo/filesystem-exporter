@@ -2,10 +2,6 @@
 version: 2
 project_name: filesystem-exporter
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: filesystem-exporter
     main: ./cmd/filesystem-exporter
@@ -38,20 +34,16 @@ dockers:
     use: buildx
     goos: linux
     goarch: amd64
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
+    ids:
+      - filesystem-exporter
     image_templates:
       - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-amd64
-    extra_files:
-      - go.mod
-      - go.sum
-      - cmd
-      - internal
-      - README.md
     build_flag_templates:
       - --pull
       - --platform=linux/amd64
-      - --build-arg=TARGETOS=linux
-      - --build-arg=TARGETARCH=amd64
+      - --cache-from=type=gha,scope=filesystem-exporter-amd64
+      - --cache-to=type=gha,mode=max,scope=filesystem-exporter-amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description=Prometheus exporter for filesystem usage
       - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
@@ -63,20 +55,16 @@ dockers:
     use: buildx
     goos: linux
     goarch: arm64
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
+    ids:
+      - filesystem-exporter
     image_templates:
       - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-arm64
-    extra_files:
-      - go.mod
-      - go.sum
-      - cmd
-      - internal
-      - README.md
     build_flag_templates:
       - --pull
       - --platform=linux/arm64
-      - --build-arg=TARGETOS=linux
-      - --build-arg=TARGETARCH=arm64
+      - --cache-from=type=gha,scope=filesystem-exporter-arm64
+      - --cache-to=type=gha,mode=max,scope=filesystem-exporter-arm64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description=Prometheus exporter for filesystem usage
       - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}

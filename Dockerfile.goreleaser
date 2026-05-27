@@ -1,0 +1,11 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY filesystem-exporter /usr/local/bin/filesystem-exporter
+
+EXPOSE 9799
+
+ENTRYPOINT ["/usr/local/bin/filesystem-exporter"]
