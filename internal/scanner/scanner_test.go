@@ -261,6 +261,21 @@ func TestWalkRegularFilesDoesNotDeadlockWithSingleWorkerAndManyEntries(t *testin
 	}
 }
 
+func TestResolveMountUsesLongestMatchingMountPoint(t *testing.T) {
+	t.Parallel()
+
+	mount := resolveMount("/data/archive", []mountInfo{
+		{mountPoint: "/", source: "overlay", fsType: "overlay"},
+		{mountPoint: "/data", source: "nfs.example.com:/export", fsType: "nfs4"},
+		{mountPoint: "/data/archive", source: "nfs.example.com:/archive", fsType: "nfs4"},
+		{mountPoint: "/database", source: "nfs.example.com:/database", fsType: "nfs4"},
+	})
+
+	if mount.source != "nfs.example.com:/archive" || mount.fsType != "nfs4" {
+		t.Fatalf("resolved mount = %#v", mount)
+	}
+}
+
 func assertUsage(t *testing.T, results []usage.PathUsage, path string, wantUsed float64) {
 	t.Helper()
 

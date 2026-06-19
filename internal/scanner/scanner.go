@@ -13,10 +13,35 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/prometheus/procfs"
 	"golang.org/x/sys/unix"
 
 	"github.com/containeroo/filesystem-exporter/internal/usage"
 )
+
+type mountInfo struct {
+	mountPoint string
+	source     string
+	fsType     string
+}
+
+var currentMounts = func() ([]mountInfo, error) {
+	mounts, err := procfs.GetMounts()
+	if err != nil {
+		return nil, err
+	}
+
+	infos := make([]mountInfo, 0, len(mounts))
+	for _, mount := range mounts {
+		infos = append(infos, mountInfo{
+			mountPoint: mount.MountPoint,
+			source:     mount.Source,
+			fsType:     mount.FSType,
+		})
+	}
+
+	return infos, nil
+}
 
 type PathScanner struct {
 	rootPath        string
@@ -42,6 +67,8 @@ func ValidatePath(target string) error {
 }
 
 func (s *PathScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
+	mounts, _ := currentMounts()
+
 	rootStats, err := statPath(s.rootPath)
 	if err != nil {
 		return usage.ScanResult{}, err
@@ -59,9 +86,12 @@ func (s *PathScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
 			return usage.ScanResult{}, err
 		}
 
+		rootMount := resolveMount(s.rootPath, mounts)
 		return usage.ScanResult{
 			Usages: []usage.PathUsage{{
 				Path:           rootLabel,
+				MountSource:    rootMount.source,
+				MountFSType:    rootMount.fsType,
 				CapacityBytes:  rootStats.CapacityBytes,
 				AvailableBytes: rootStats.AvailableBytes,
 				UsedBytes:      rootStats.UsedBytes,
@@ -114,8 +144,11 @@ func (s *PathScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
 	}
 
 	results := make([]usage.PathUsage, 0, len(childPaths)+1)
+	rootMount := resolveMount(s.rootPath, mounts)
 	results = append(results, usage.PathUsage{
 		Path:           rootLabel,
+		MountSource:    rootMount.source,
+		MountFSType:    rootMount.fsType,
 		CapacityBytes:  rootStats.CapacityBytes,
 		AvailableBytes: rootStats.AvailableBytes,
 		UsedBytes:      usedBytes[rootLabel],
@@ -141,8 +174,11 @@ func (s *PathScanner) Scan(ctx context.Context) (usage.ScanResult, error) {
 			return usage.ScanResult{}, err
 		}
 
+		mount := resolveMount(localPath, mounts)
 		results = append(results, usage.PathUsage{
 			Path:           label,
+			MountSource:    mount.source,
+			MountFSType:    mount.fsType,
 			CapacityBytes:  stats.CapacityBytes,
 			AvailableBytes: stats.AvailableBytes,
 			UsedBytes:      usedBytes[label],
@@ -451,6 +487,36 @@ func walkRegularFilesWithIO(
 
 func shouldIgnoreMissingPath(err error) bool {
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+func resolveMount(target string, mounts []mountInfo) mountInfo {
+	target = filepath.ToSlash(filepath.Clean(target))
+
+	var best mountInfo
+	bestLen := -1
+	for _, mount := range mounts {
+		mountPoint := filepath.ToSlash(filepath.Clean(mount.mountPoint))
+		if !isPathWithinMount(target, mountPoint) {
+			continue
+		}
+
+		if len(mountPoint) <= bestLen {
+			continue
+		}
+
+		best = mount
+		bestLen = len(mountPoint)
+	}
+
+	return best
+}
+
+func isPathWithinMount(target, mountPoint string) bool {
+	if mountPoint == "/" {
+		return strings.HasPrefix(target, "/")
+	}
+
+	return target == mountPoint || strings.HasPrefix(target, strings.TrimRight(mountPoint, "/")+"/")
 }
 
 func statPath(target string) (usage.PathUsage, error) {

@@ -34,8 +34,8 @@ func TestCollectorExportsMetricsFromLastSuccessfulSnapshot(t *testing.T) {
 	scanner := &fakeScanner{
 		result: usage.ScanResult{
 			Usages: []usage.PathUsage{
-				{Path: "/data", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
-				{Path: "/data/archive", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 250},
+				{Path: "/data", MountSource: "nfs.example.com:/export", MountFSType: "nfs4", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 600},
+				{Path: "/data/archive", MountSource: "nfs.example.com:/export", MountFSType: "nfs4", CapacityBytes: 1000, AvailableBytes: 400, UsedBytes: 250},
 			},
 		},
 	}
@@ -61,6 +61,12 @@ func TestCollectorExportsMetricsFromLastSuccessfulSnapshot(t *testing.T) {
 		"root_path": "/data",
 		"path":      "/data",
 	}, 1000)
+	assertMetricValue(t, registry, "filesystem_exporter_path_mount_info", map[string]string{
+		"root_path":    "/data",
+		"path":         "/data",
+		"mount_source": "nfs.example.com:/export",
+		"mount_fstype": "nfs4",
+	}, 1)
 }
 
 func TestMonitorKeepsLastSuccessfulSnapshotOnFailure(t *testing.T) {

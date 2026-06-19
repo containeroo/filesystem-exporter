@@ -135,6 +135,7 @@ type Collector struct {
 	capacityDesc         *prometheus.Desc
 	availableDesc        *prometheus.Desc
 	usedDesc             *prometheus.Desc
+	mountInfoDesc        *prometheus.Desc
 	collectSuccessDesc   *prometheus.Desc
 	collectDurationDesc  *prometheus.Desc
 	collectTimestampDesc *prometheus.Desc
@@ -159,6 +160,12 @@ func NewCollector(monitor *Monitor, constLabels prometheus.Labels) *Collector {
 			"filesystem_exporter_path_used_bytes",
 			"Used bytes contained in the scanned path subtree.",
 			[]string{"path"},
+			constLabels,
+		),
+		mountInfoDesc: prometheus.NewDesc(
+			"filesystem_exporter_path_mount_info",
+			"Mount metadata for the scanned path or underlying filesystem.",
+			[]string{"path", "mount_source", "mount_fstype"},
 			constLabels,
 		),
 		collectSuccessDesc: prometheus.NewDesc(
@@ -186,6 +193,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.capacityDesc
 	ch <- c.availableDesc
 	ch <- c.usedDesc
+	ch <- c.mountInfoDesc
 	ch <- c.collectSuccessDesc
 	ch <- c.collectDurationDesc
 	ch <- c.collectTimestampDesc
@@ -202,6 +210,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(c.capacityDesc, prometheus.GaugeValue, pathUsage.CapacityBytes, pathUsage.Path)
 		ch <- prometheus.MustNewConstMetric(c.availableDesc, prometheus.GaugeValue, pathUsage.AvailableBytes, pathUsage.Path)
 		ch <- prometheus.MustNewConstMetric(c.usedDesc, prometheus.GaugeValue, pathUsage.UsedBytes, pathUsage.Path)
+		ch <- prometheus.MustNewConstMetric(c.mountInfoDesc, prometheus.GaugeValue, 1, pathUsage.Path, pathUsage.MountSource, pathUsage.MountFSType)
 	}
 }
 

@@ -102,7 +102,7 @@ The deployment example mounts an NFS export directly into `/data`:
 
 Update the image reference, namespace, and the example `nfs.server` and `nfs.path` values before applying it.
 
-The PrometheusRule example includes alerts for repeated collection failures, stale collection timestamps, and low free space on the root filesystem path. Adjust the hard-coded `/data` label matchers if you deploy the exporter with a different `-filesystem.path`.
+The PrometheusRule example includes alerts for repeated collection failures, stale collection timestamps, and low free space on the root filesystem path. Low-space alerts join path usage with mount metadata, so alert labels include the underlying mount source such as `nfs.example.internal:/exports/data`. Adjust the hard-coded `/data` label matchers if you deploy the exporter with a different `-filesystem.path`.
 
 ## Flags
 
@@ -121,18 +121,22 @@ The PrometheusRule example includes alerts for repeated collection failures, sta
 
 ### Path metrics
 
-These metrics include the constant label `root_path`, plus a `path` label for the root path. If `-filesystem.report-child-dirs=true` is enabled, they also include one series per depth-1 child directory.
+These metrics include the constant label `root_path`, plus a `path` label for the root path. If `-filesystem.report-child-dirs=true` is enabled, they also include one series per depth-1 child directory. The mount metadata metric also includes `mount_source` and `mount_fstype`.
 
 - `filesystem_exporter_path_capacity_bytes`
 - `filesystem_exporter_path_available_bytes`
 - `filesystem_exporter_path_used_bytes`
+- `filesystem_exporter_path_mount_info`
 
 Example:
 
 ```text
 filesystem_exporter_path_used_bytes{root_path="/data",path="/data"} 1.506738176e+09
 filesystem_exporter_path_used_bytes{root_path="/data",path="/data/archive"} 7.86706432e+08
+filesystem_exporter_path_mount_info{root_path="/data",path="/data",mount_source="nfs.example.internal:/exports/data",mount_fstype="nfs4"} 1
 ```
+
+`filesystem_exporter_path_mount_info` is a metadata metric. Its value is always `1`; use its labels to join mount metadata into alerts and dashboards.
 
 ### Exporter health metrics
 

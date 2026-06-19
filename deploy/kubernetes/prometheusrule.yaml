@@ -26,18 +26,30 @@ spec:
             summary: filesystem-exporter metrics are stale
             description: filesystem-exporter for {{ $labels.root_path }} has not produced a fresh collection timestamp for more than 15 minutes.
         - alert: FilesystemUsageHigh
-          expr: filesystem_exporter_path_available_bytes{root_path="/data",path="/data"} / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.10
+          expr: |
+            (
+              filesystem_exporter_path_available_bytes{root_path="/data",path="/data"}
+              / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.10
+            )
+            * on (root_path, path) group_left (mount_source, mount_fstype)
+              filesystem_exporter_path_mount_info{root_path="/data",path="/data"}
           for: 15m
           labels:
             severity: warning
           annotations:
             summary: filesystem free space is low
-            description: Less than 10% free space remains on {{ $labels.path }}.
+            description: Less than 10% free space remains on {{ $labels.path }} mounted from {{ $labels.mount_source }}.
         - alert: FilesystemUsageCritical
-          expr: filesystem_exporter_path_available_bytes{root_path="/data",path="/data"} / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.05
+          expr: |
+            (
+              filesystem_exporter_path_available_bytes{root_path="/data",path="/data"}
+              / filesystem_exporter_path_capacity_bytes{root_path="/data",path="/data"} < 0.05
+            )
+            * on (root_path, path) group_left (mount_source, mount_fstype)
+              filesystem_exporter_path_mount_info{root_path="/data",path="/data"}
           for: 15m
           labels:
             severity: critical
           annotations:
             summary: filesystem free space is critically low
-            description: Less than 5% free space remains on {{ $labels.path }}.
+            description: Less than 5% free space remains on {{ $labels.path }} mounted from {{ $labels.mount_source }}.
