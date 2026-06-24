@@ -29,59 +29,31 @@ archives:
 checksum:
   name_template: checksums.txt
 
-dockers:
-  - id: ghcr-amd64
-    use: buildx
-    goos: linux
-    goarch: amd64
-    dockerfile: Dockerfile.goreleaser
+dockers_v2:
+  - dockerfile: Dockerfile.goreleaser
     ids:
       - filesystem-exporter
-    image_templates:
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-amd64
-    build_flag_templates:
+    images:
+      - ghcr.io/containeroo/filesystem-exporter
+      - containeroo/filesystem-exporter
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    flags:
       - --pull
-      - --platform=linux/amd64
-      - --cache-from=type=gha,scope=filesystem-exporter-amd64
-      - --cache-to=type=gha,mode=max,scope=filesystem-exporter-amd64
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description=Prometheus exporter for filesystem usage
-      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
-      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-  - id: ghcr-arm64
-    use: buildx
-    goos: linux
-    goarch: arm64
-    dockerfile: Dockerfile.goreleaser
-    ids:
-      - filesystem-exporter
-    image_templates:
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-arm64
-    build_flag_templates:
-      - --pull
-      - --platform=linux/arm64
-      - --cache-from=type=gha,scope=filesystem-exporter-arm64
-      - --cache-to=type=gha,mode=max,scope=filesystem-exporter-arm64
-      - --label=org.opencontainers.image.title={{ .ProjectName }}
-      - --label=org.opencontainers.image.description=Prometheus exporter for filesystem usage
-      - --label=org.opencontainers.image.url=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
-      - --label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPOSITORY }}
-      - --label=org.opencontainers.image.version={{ .Version }}
-      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-      - --label=org.opencontainers.image.revision={{ .FullCommit }}
-
-docker_manifests:
-  - name_template: ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}
-    image_templates:
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-amd64
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-arm64
-  - name_template: ghcr.io/containeroo/filesystem-exporter:latest
-    image_templates:
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-amd64
-      - ghcr.io/containeroo/filesystem-exporter:{{ .Tag }}-arm64
+      - --cache-from=type=gha,scope=filesystem-exporter
+      - --cache-to=type=gha,mode=max,scope=filesystem-exporter
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: Prometheus exporter for filesystem usage
+      org.opencontainers.image.url: https://github.com/containeroo/filesystem-exporter
+      org.opencontainers.image.source: https://github.com/containeroo/filesystem-exporter
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: '{{ time "2006-01-02T15:04:05Z07:00" }}'
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
 
 release:
   prerelease: auto

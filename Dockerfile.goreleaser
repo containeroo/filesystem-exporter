@@ -1,10 +1,11 @@
 FROM debian:bookworm-slim
+ARG TARGETPLATFORM
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY filesystem-exporter /usr/local/bin/filesystem-exporter
+COPY $TARGETPLATFORM/filesystem-exporter /usr/local/bin/filesystem-exporter
 
 EXPOSE 9799
 
