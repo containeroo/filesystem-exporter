@@ -102,7 +102,7 @@ The deployment example mounts an NFS export directly into `/data`:
 
 Update the image reference, namespace, and the example `nfs.server` and `nfs.path` values before applying it.
 
-The PrometheusRule example includes alerts for repeated collection failures, stale collection timestamps, and low free space on the root filesystem path. Low-space alerts join path usage with mount metadata, so alert labels include the underlying mount source such as `nfs.example.internal:/exports/data`. Adjust the hard-coded `/data` label matchers if you deploy the exporter with a different `-filesystem.path`.
+The PrometheusRule example includes alerts for repeated collection failures, stale collection timestamps, and low free space on the root filesystem path. Low-space alerts join path usage with mount metadata, so alert labels include the underlying mount source such as `nfs.example.internal:/exports/data`. Alert descriptions include human-readable total, used, available, and used-percent values. The storage-used value is computed as capacity minus available bytes, matching the low-space alert logic. Adjust the hard-coded `/data` label matchers if you deploy the exporter with a different `-filesystem.path`.
 
 ## Flags
 
