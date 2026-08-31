@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.70.1
+	github.com/prometheus/common v0.71.0
 	github.com/prometheus/procfs v0.22.0
 	golang.org/x/sys v0.47.0
 )
