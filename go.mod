@@ -1,6 +1,6 @@
 module github.com/containeroo/filesystem-exporter
 
-go 1.26.1
+go 1.26.10
 
 require (
 	github.com/prometheus/client_golang v1.25.0
